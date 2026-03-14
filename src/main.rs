@@ -1,56 +1,137 @@
-use std::path::Path;
+
+use std::{path::Path, time::Instant};
 
 use anyhow::Result;
 
+mod stats;
 mod generate;
 mod v1;
+mod v2;
 
 fn main() -> Result<()> {
-    // generate::generate_samples()?;
-    let path = Path::new("measurements.txt");
-    let result = v1::run(path)?;
-    println!("{}", result);
+    let start = Instant::now();
+    v2::run(Path::new("measurements.txt"))?;
+    let end = Instant::now();
+    println!("Time taken: {:?}", end.duration_since(start));
     Ok(())
 }
 
-
 #[cfg(test)]
 mod tests {
+    use std::fmt::Write;
+    use std::path::Path;
+
+    use serde::Deserialize;
+    use serde_json::Deserializer;
+
     use super::*;
 
     const BASE_PATH: &str = "1brc/src/test/resources/samples";
 
-    const SAMPLES: &[&str] = &[
-        "measurements-1",
-        "measurements-10",
-        "measurements-10000-unique-keys",
-        "measurements-2",
-        "measurements-20",
-        "measurements-3",
-        "measurements-boundaries",
-        "measurements-complex-utf8",
-        "measurements-dot",
-        "measurements-rounding",
-        "measurements-short",
-        "measurements-shortest",
-    ];
+    macro_rules! sample_tests {
+        ($( $name:ident => $sample:expr ),* $(,)?) => {
+            $(
+                #[test]
+                fn $name() {
+                    let base_path = std::path::Path::new(BASE_PATH);
+
+                    let input_path = base_path
+                        .join($sample)
+                        .with_extension("txt");
+
+                    let output_path = base_path
+                        .join($sample)
+                        .with_extension("out");
+
+                    let expected = std::fs::read_to_string(&output_path).unwrap();
+
+                    let result_v1 = v1::run(&input_path).unwrap();
+                    assert_eq!(
+                        result_v1,
+                        expected,
+                        "Invalid output for v1: {}",
+                        input_path.display()
+                    );
+
+                    let result_v2 = v2::run(&input_path).unwrap();
+                    assert_eq!(
+                        result_v2,
+                        expected,
+                        "Invalid output for v2: {}",
+                        input_path.display()
+                    );
+                }
+            )*
+        };
+    }
+
+    sample_tests!(
+        measurements_1 => "measurements-1",
+        measurements_10 => "measurements-10",
+        measurements_10000_unique_keys => "measurements-10000-unique-keys",
+        measurements_2 => "measurements-2",
+        measurements_20 => "measurements-20",
+        measurements_3 => "measurements-3",
+        measurements_boundaries => "measurements-boundaries",
+        measurements_complex_utf8 => "measurements-complex-utf8",
+        measurements_dot => "measurements-dot",
+        measurements_rounding => "measurements-rounding",
+        measurements_short => "measurements-short",
+        measurements_shortest => "measurements-shortest",
+    );
 
     #[test]
-    fn test_samples() {
-        for sample in SAMPLES {
-            let input_path = Path::new(BASE_PATH).join(sample).with_extension("txt");
-            let output_path = Path::new(BASE_PATH).join(sample).with_extension("out");
-            println!("Testing {}", input_path.display());
+    fn test_measurements() {
+        let expected = get_expected_output().unwrap();
+        let result = v2::run(Path::new("measurements.txt")).unwrap();
 
-            let result = v1::run(&input_path).unwrap();
+        assert_eq!(result, expected);
+    }
 
-            let expected = std::fs::read_to_string(output_path).unwrap();
-            assert_eq!(
-                result,
-                expected,
-                "Invalid output for {}",
-                input_path.display()
-            );
+    // #[test]
+    // fn test_measurements() {
+    //     let expected = get_expected_output().unwrap();
+    //     std::fs::write("mdr.txt", &expected).unwrap();
+
+    //     let result = v1::run(Path::new("measurements.txt")).unwrap();
+    //     std::fs::write("lol.txt", &result).unwrap();
+    //     assert_eq!(result, expected);
+    // }
+
+    fn get_expected_output() -> Result<String> {
+        #[derive(Debug, Deserialize)]
+        struct Measurement {
+            station: String,
+            min: f64,
+            avg: f64,
+            max: f64,
         }
+
+        let output_path = Path::new("measurements.out.json");
+
+        let expected = std::fs::read_to_string(&output_path)?;
+        let mut measurements = Deserializer::from_str(&expected)
+            .into_iter::<Measurement>()
+            .collect::<Result<Vec<_>, _>>()?;
+
+        measurements.sort_by_key(|m| m.station.clone());
+
+
+        let mut output = String::new();
+        write!(output, "{{")?;
+        let mut first = true;
+        for measurement in measurements {
+            if !first {
+                write!(output, ", ")?;
+            }
+            first = false;
+            let min = (measurement.min * 10.0).round() / 10.0;
+            let avg = (measurement.avg * 10.0).round() / 10.0;
+            let max = (measurement.max * 10.0).round() / 10.0;
+            write!(output, "{}={:.1}/{:.1}/{:.1}", measurement.station, min, avg, max)?;
+        }
+        writeln!(output, "}}")?;
+
+        Ok(output)
     }
 }

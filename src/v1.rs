@@ -1,7 +1,8 @@
+#![allow(dead_code)]
+
 use std::fmt::Write;
 use std::{
     collections::BTreeMap,
-    fmt::{Display, Formatter},
     fs::File,
     io::{BufRead as _, BufReader},
     path::Path,
@@ -9,7 +10,8 @@ use std::{
 
 use anyhow::{Context as _, Result};
 
-const CAPACITY: usize = 64 * 1024 * 1024;
+use crate::stats::{Value, average};
+
 
 #[derive(Debug, Default)]
 struct Stats {
@@ -22,14 +24,13 @@ struct Stats {
 
 pub fn run(path: &Path) -> Result<String> {
     let file = File::open(path)?;
-    let reader = BufReader::with_capacity(CAPACITY, file);
+    let reader = BufReader::with_capacity(1024 * 1024 * 1024, file);
 
     let lines = reader.lines();
 
     let mut result: BTreeMap<String, Stats> = BTreeMap::new();
-
     for (i, line) in lines.enumerate() {
-        if i % 1_000_000 == 0 {
+        if i % 1_000_000 == 0  && i > 0 { 
             println!("Read {}M lines", i / 1_000_000);
         }
 
@@ -37,24 +38,23 @@ pub fn run(path: &Path) -> Result<String> {
         let (name, value) = line.split_once(';').context("Invalid line")?;
         let value = parse_value(value)?;
 
-        result
-            .entry(name.to_owned())
-            .and_modify(|stats| {
-                if value < stats.min {
-                    stats.min = value;
-                }
-                if value > stats.max {
-                    stats.max = value;
-                }
-                stats.sum += value as i32;
-                stats.count += 1;
-            })
-            .or_insert(Stats {
+        if let Some(stats) = result.get_mut(name) {
+            if value < stats.min {
+                stats.min = value;
+            }
+            if value > stats.max {
+                stats.max = value;
+            }
+            stats.sum += value as i32;
+            stats.count += 1;
+        } else {
+            result.insert(name.to_owned(), Stats {
                 min: value,
                 max: value,
                 sum: value as i32,
                 count: 1,
             });
+        }
     }
 
     let mut output = String::new();
@@ -86,41 +86,9 @@ pub fn run(path: &Path) -> Result<String> {
     Ok(output)
 }
 
-struct Value(i16);
-
-impl Display for Value {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), std::fmt::Error> {
-        let raw = self.0;
-        let sign = if raw < 0 { "-" } else { "" };
-        let abs = raw.abs();
-        let int = abs / 10;
-        let frac = abs % 10;
-
-        write!(f, "{}{}.{}", sign, int, frac)
-    }
-}
 
 fn parse_value(s: &str) -> Result<i16, anyhow::Error> {
     let v = s.replace('.', "");
     let v = v.parse::<i16>().context("Invalid value")?;
     Ok(v)
 }
-
-#[inline]
-fn average(sum: i32, count: usize) -> Result<i16, anyhow::Error> {
-    let count = count as i32;
-    let avg = sum / count;
-    let mut avg: i16 = avg.try_into().context("Average is too large")?;
-    let avg_rest = sum % count;
-
-    if 2 * avg_rest >= count {
-        avg += 1;
-    }
-
-    if 2 * avg_rest < -count {
-        avg -= 1;
-    }
-
-    Ok(avg)
-}
-
