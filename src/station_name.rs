@@ -1,6 +1,5 @@
-use std::simd::cmp::SimdPartialEq as _;
 use std::simd::Simd;
-
+use std::simd::cmp::SimdPartialEq as _;
 
 /// Station names are between 1 and 100 characters long.
 #[inline]
@@ -24,17 +23,15 @@ fn find(buffer: &[u8], needle: u8) -> Option<usize> {
         let bits = mask.to_bitmask();
 
         if bits != 0 {
-            let pos = bits.trailing_zeros() as usize;
+            let pos: usize = bits.trailing_zeros().try_into().expect("Trailing zeros overflow");
             return Some(index + pos);
         }
 
         index += SIMD_SIZE;
     }
 
-    for i in index..buffer.len() {
-        if buffer[i] == needle {
-            return Some(i);
-        }
+    if let Some(i) = (index..buffer.len()).find(|&i| buffer[i] == needle) {
+        return Some(i);
     }
 
     None

@@ -1,93 +1,121 @@
 use anyhow::Result;
 use anyhow::{Context as _, bail};
-use memmap2::Mmap;
-use std::io::Write as _;
+use std::io::Read as _;
+use std::sync::mpsc::TryRecvError;
 use std::thread;
 use std::{fs::File, path::Path};
 
 use crate::stats::StationStatsMap;
 use crate::{station_name, value};
 
-fn memchr(needle: u8, haystack: &[u8]) -> Option<usize> {
-    haystack.iter().position(|&b| b == needle)
+const CHUNK_SIZE: usize = 16 * 1024 * 1024;
+
+struct WorkOrder {
+    buffer: Vec<u8>,
+    size: usize,
 }
 
 pub fn run(path: &Path) -> Result<String> {
-    let file = File::open(path)?;
-    // SAFETY: mmap is only used for reading and we do not modify the file.
-    let mmap = unsafe { Mmap::map(&file)? };
-
-    let count = thread::available_parallelism()?.get();
-    let chunk_size = mmap.len().div_ceil(count);
-
-    println!("File size: {}", mmap.len());
-    println!("Available parallelism: {count}");
-    println!("Chunk size: {chunk_size}");
-
+    let concurrency = thread::available_parallelism()?.get();
     let total_stats = thread::scope(|s| {
-        let mut handles = Vec::new();
+        let (work_tx, work_rx) = std::sync::mpmc::sync_channel::<WorkOrder>(concurrency);
+        let (buffer_tx, buffer_rx) = std::sync::mpsc::sync_channel::<Vec<u8>>(concurrency);
 
-        let mut previous_end = 0_usize;
-        for i in 0..count {
-            let start = previous_end;
-            let tentative_end = (start + chunk_size).min(mmap.len());
-            let end = if let Some(idx) = memchr(b'\n', &mmap[tentative_end..]) {
-                // Include the newline so the next chunk starts at a line boundary
-                tentative_end + idx + 1
-            } else {
-                mmap.len()
-            };
-            previous_end = end;
+        let feeder = std::thread::Builder::new()
+            .name("feeder".to_owned())
+            .spawn_scoped(s, move || {
+                let mut file = File::open(path)?;
+                let file_size: usize = file.metadata()?.len().try_into()?;
+                let mut idx = 0_usize;
+                let mut last_buffer = vec![];
 
-            let chunk = &mmap[start..end];
-            println!("[{i:02}] Chunk size: {}", chunk.len());
+                while idx < file_size {
+                    let mut buffer = match buffer_rx.try_recv() {
+                        Ok(buffer) => buffer,
+                        Err(TryRecvError::Empty) => {
+                            vec![0; CHUNK_SIZE]
+                        }
+                        e @ Err(TryRecvError::Disconnected) => e?,
+                    };
 
-            let t = s.spawn(move || {
-                let stats = process(chunk).context("Error processing chunk")?;
-                Ok::<_, anyhow::Error>(stats)
-            });
-            handles.push(t);
-        }
+                    let size = (file_size - idx).min(CHUNK_SIZE - last_buffer.len());
 
-        if previous_end != mmap.len() {
-            bail!("Chunk boundary error: did not cover full file");
-        }
+                    buffer[..last_buffer.len()].copy_from_slice(&last_buffer);
+
+                    file.read_exact(&mut buffer[last_buffer.len()..size])?;
+                    idx += size;
+
+                    let mut truncated_size = size;
+                    while truncated_size > 1 && buffer[truncated_size - 1] != b'\n' {
+                        truncated_size -= 1;
+                    }
+
+                    last_buffer = buffer[truncated_size..size].to_vec();
+
+                    work_tx.send(WorkOrder {
+                        buffer,
+                        size: truncated_size,
+                    })?;
+                }
+                Ok::<_, anyhow::Error>(())
+            })?;
+
+        let handles = (0..concurrency)
+            .map(|worker_id| {
+                let work_rx = work_rx.clone();
+                let buffer_tx = buffer_tx.clone();
+
+                std::thread::Builder::new()
+                    .name(format!("worker-{worker_id}"))
+                    .spawn_scoped(s, move || {
+                        let mut stats = StationStatsMap::new();
+                        while let Ok(work_order) = work_rx.recv() {
+                            process(&work_order.buffer[..work_order.size], &mut stats)?;
+                            // println!("{worker_id}: Processing chunk of size {}", work_order.size);
+                            if buffer_tx.send(work_order.buffer).is_err() {
+                                // ignore error
+                            }
+                        }
+                        Ok::<_, anyhow::Error>(stats)
+                    })
+                    .context("Failed to spawn worker")
+            })
+            .collect::<Result<Vec<_>>>()?;
+
+        let stats_iter = handles
+            .into_iter()
+            .map(|handle| handle.join().expect("Failed to join worker"))
+            .collect::<Result<Vec<_>>>()?;
 
         let mut total_stats = StationStatsMap::new();
-        for handle in handles {
-            let stats = handle
-                .join()
-                .expect("worker thread panicked")
-                .context("Error joining thread")?;
+        for stats in stats_iter {
             total_stats.extend(&stats);
         }
 
-        Ok::<_, anyhow::Error>(total_stats)
-    })
-    .context("Error processing chunks")?;
+        feeder.join().expect("Failed to join feeder")?;
 
-    let mut output = Vec::new();
+        Ok::<_, anyhow::Error>(total_stats)
+    })?;
+
     let report = total_stats.report()?;
-    write!(output, "{report}")?;
-    Ok(String::from_utf8(output)?)
+
+    let output = report.to_string();
+
+    Ok(output)
 }
 
-fn process(input_data: &[u8]) -> Result<StationStatsMap> {
+fn process(input_data: &[u8], stats: &mut StationStatsMap) -> Result<()> {
     let mut data = input_data;
-
-    let mut stats = StationStatsMap::new();
-
-    let mut count = 0_i32;
 
     while !data.is_empty() {
         let Some((station_name, rest)) = station_name::parse(data) else {
             let preview: String = String::from_utf8_lossy(&data[..data.len().min(80)]).into();
-            bail!("Invalid line, no semicolon found (preview): {:?}", preview);
+            bail!("Invalid line, no semicolon found (preview): {preview:?}");
         };
 
         let Some((value, rest)) = value::parse(rest) else {
             let preview: String = String::from_utf8_lossy(&rest[..rest.len().min(80)]).into();
-            bail!("Invalid line, no value found (preview): {:?}", preview);
+            bail!("Invalid line, no value found (preview): {preview:?}");
         };
 
         let rest = strip_newline(rest);
@@ -95,11 +123,9 @@ fn process(input_data: &[u8]) -> Result<StationStatsMap> {
         data = rest;
 
         stats.update(station_name, value);
-        count += 1_i32;
     }
-    println!("Processed {count} lines");
 
-    Ok(stats)
+    Ok(())
 }
 
 #[inline]

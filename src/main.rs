@@ -1,4 +1,5 @@
 #![feature(portable_simd)]
+#![feature(mpmc_channel)]
 #![warn(
     clippy::pedantic,
     clippy::cargo_common_metadata,
