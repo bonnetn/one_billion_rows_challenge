@@ -2,7 +2,7 @@ const MAX_LENGTH: usize = 100;
 
 /// Station names are between 1 and 100 characters long.
 #[inline]
-pub fn parse<'a>(line: &'a [u8]) -> Option<(&'a [u8], &'a [u8])> {
+pub fn parse(line: &[u8]) -> Option<(&[u8], &[u8])> {
     if line.len() < 2 {
         return None;
     }

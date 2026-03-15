@@ -1,12 +1,10 @@
-#![allow(dead_code)]
-
 use anyhow::Result;
 use std::{
     fmt::{Display, Formatter},
 };
 
 use anyhow::Context as _;
-use rustc_hash::FxHashMap;
+use rustc_hash::{FxBuildHasher, FxHashMap};
 
 
 #[derive(Clone, Debug)]
@@ -26,7 +24,7 @@ impl StationStatsMap {
     pub fn new() -> Self {
         Self(FxHashMap::with_capacity_and_hasher(
             STATS_CAPACITY,
-            Default::default(),
+            FxBuildHasher,
         ))
     }
 
@@ -34,7 +32,7 @@ impl StationStatsMap {
         if let Some(stats) = self.0.get_mut(station_name) {
             stats.min = stats.min.min(value);
             stats.max = stats.max.max(value);
-            stats.sum += value as i32;
+            stats.sum += i32::from(value);
             stats.count += 1;
         } else {
             self.0.insert(
@@ -42,7 +40,7 @@ impl StationStatsMap {
                 StationStats {
                     min: value,
                     max: value,
-                    sum: value as i32,
+                    sum: i32::from(value),
                     count: 1,
                 },
             );
@@ -72,7 +70,7 @@ impl StationStatsMap {
             report.0.push((name, min, avg, max));
         }
 
-        report.0.sort_by_key(|(name, _, _, _)| *name);
+        report.0.sort_by_key(|&(name, _, _, _)| name);
 
         Ok(report)
     }
@@ -88,17 +86,17 @@ impl IntoIterator for StationStatsMap {
 
 pub struct Report<'a>(Vec<(&'a str, DecimalValue, DecimalValue, DecimalValue)>);
 
-impl<'a> Display for Report<'a> {
+impl Display for Report<'_> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), std::fmt::Error> {
         write!(f, "{{")?;
 
         let mut first = true;
-        for (name, min, avg, max) in &self.0 {
+        for &(name, min, avg, max) in &self.0 {
             if !first {
                 write!(f, ", ")?;
             }
 
-            write!(f, "{}={}/{}/{}", name, min, avg, max)?;
+            write!(f, "{name}={min}/{avg}/{max}")?;
             first = false;
         }
         writeln!(f, "}}")?;
@@ -109,22 +107,23 @@ impl<'a> Display for Report<'a> {
 
 #[inline]
 pub fn average(sum: i32, count: usize) -> i16 {
-    let count = count as i32;
+    let count = i32::try_from(count).expect("count is too large");
     let avg = sum / count;
     let mut avg: i16 = avg.try_into().expect("Average is too large");
     let avg_rest = sum % count;
 
-    if 2 * avg_rest >= count {
+    if 2_i32 * avg_rest >= count {
         avg += 1;
     }
 
-    if 2 * avg_rest < -count {
+    if 2_i32 * avg_rest < -count {
         avg -= 1;
     }
 
     avg
 }
 
+#[derive(Clone,Copy)]
 pub struct DecimalValue(pub i16);
 
 impl Display for DecimalValue {
@@ -135,6 +134,6 @@ impl Display for DecimalValue {
         let int = abs / 10;
         let frac = abs % 10;
 
-        write!(f, "{}{}.{}", sign, int, frac)
+        write!(f, "{sign}{int}.{frac}")
     }
 }
