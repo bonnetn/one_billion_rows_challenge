@@ -106,11 +106,12 @@ mod stats;
 mod value;
 
 fn main() -> Result<()> {
+    let samples_path = Path::new("measurements.txt");
     if std::env::args().nth(1).is_some() {
-        generate::generate_samples()?;
+        generate::generate_samples(samples_path)?;
     } else {
         let start = Instant::now();
-        challenge::run(Path::new("measurements.txt"))?;
+        challenge::run(samples_path)?;
         let end = Instant::now();
         println!("Time taken: {:?}", end.duration_since(start));
     }
@@ -172,7 +173,10 @@ mod tests {
     #[test]
     fn test_measurements() {
         let expected = std::fs::read_to_string(Path::new("measurements.out")).unwrap();
-        let result = challenge::run(Path::new("measurements.txt")).unwrap();
+
+        let samples_path = Path::new("measurements.txt");
+        generate::generate_samples(samples_path).unwrap();
+        let result = challenge::run(samples_path).unwrap();
 
         assert_eq!(result, expected);
     }

@@ -1,0 +1,46 @@
+name: Build
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+jobs:
+  check:
+    name: Check
+    runs-on: ubuntu-latest
+    env:
+      CARGO_TERM_COLOR: always
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      - uses: ./.github/actions/setup-rust
+      - name: Check
+        run: cargo check
+  test:
+    name: Test
+    runs-on: "ubuntu-latest"
+    env:
+      CARGO_TERM_COLOR: always
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      - uses: ./.github/actions/setup-rust
+      - name: Run cargo test
+        run: cargo test
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    env:
+      CARGO_TERM_COLOR: always
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      - uses: ./.github/actions/setup-rust
+      - name: Run cargo fmt
+        run: cargo fmt --all -- --check
+      - name: Run cargo clippy
+        run: cargo clippy -- -D warnings
+      - name: Install cargo deny
+        run: cargo install cargo-deny
+      - name: Run cargo clippy
+        run: cargo deny check
+      

@@ -1,0 +1,20 @@
+name: Setup Rust
+inputs:
+  target:
+    description: Optional Rust target triple (e.g. x86_64-unknown-linux-gnu, aarch64-unknown-linux-gnu, wasm32-wasi)
+    required: false
+    default: ""
+runs:
+  using: "composite"
+  steps:
+    - name: Install Protoc
+      uses: arduino/setup-protoc@v3
+      with:
+        repo-token: ${{ secrets.GITHUB_TOKEN }}
+    - uses: dtolnay/rust-toolchain@stable
+      with:
+        targets: ${{ inputs.target }}
+        components: clippy,rustfmt
+    - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
+      with:
+        shared-key: rust-cache

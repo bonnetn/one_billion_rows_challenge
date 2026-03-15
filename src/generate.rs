@@ -1,10 +1,11 @@
 // Optional data generator; allow dead code when not invoked from main.
 use std::fs::File;
 use std::io::{BufWriter, Write as _};
+use std::path::Path;
 use std::time::Instant;
 
 use anyhow::{Context as _, Result};
-use rand::Rng;
+use rand::{Rng, SeedableRng as _};
 use rand::seq::IndexedRandom as _;
 use rand_distr::{Distribution as _, Normal};
 
@@ -12,15 +13,15 @@ const CAPACITY: usize = 64 * 1024 * 1024;
 
 const BILLION: i32 = 1_000_000_000;
 
-pub fn generate_samples() -> Result<()> {
+pub fn generate_samples(path: &Path) -> Result<()> {
     let stations = STATIONS
         .iter()
         .map(|&(name, temperature)| WeatherStation::new(name, temperature))
         .collect::<Vec<_>>();
 
-    let mut rng = rand::rng();
+    let mut rng = rand_chacha::ChaCha8Rng::seed_from_u64(42);
 
-    let file = File::create("measurements.txt")?;
+    let file = File::create(path)?;
     let mut writer = BufWriter::with_capacity(CAPACITY, file);
 
     let start = Instant::now();

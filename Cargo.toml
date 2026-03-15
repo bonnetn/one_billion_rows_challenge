@@ -13,5 +13,6 @@ categories = ["command-line-utilities"]
 anyhow = "1.0.102"
 memmap2 = "0.9.10"
 rand = "0.10.0"
+rand_chacha = "0.10.0"
 rand_distr = "0.6.0"
 rustc-hash = "2.1.1"
