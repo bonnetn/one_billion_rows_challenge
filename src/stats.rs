@@ -1,11 +1,8 @@
 use anyhow::Result;
-use std::{
-    fmt::{Display, Formatter},
-};
+use std::fmt::{Display, Formatter};
 
 use anyhow::Context as _;
 use rustc_hash::{FxBuildHasher, FxHashMap};
-
 
 #[derive(Clone, Debug)]
 pub struct StationStats {
@@ -123,7 +120,7 @@ pub fn average(sum: i32, count: usize) -> i16 {
     avg
 }
 
-#[derive(Clone,Copy)]
+#[derive(Clone, Copy)]
 pub struct DecimalValue(pub i16);
 
 impl Display for DecimalValue {

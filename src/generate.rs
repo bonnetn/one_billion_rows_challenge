@@ -5,8 +5,8 @@ use std::path::Path;
 use std::time::Instant;
 
 use anyhow::{Context as _, Result};
-use rand::{Rng, SeedableRng as _};
 use rand::seq::IndexedRandom as _;
+use rand::{Rng, SeedableRng as _};
 use rand_distr::{Distribution as _, Normal};
 
 const CAPACITY: usize = 64 * 1024 * 1024;
@@ -465,7 +465,6 @@ const STATIONS: &[(&str, f64)] = &[
     ("Zanzibar City", 26.0),
     ("Z\u{fc}rich", 9.3),
 ];
-
 
 struct WeatherStation {
     name: &'static str,
