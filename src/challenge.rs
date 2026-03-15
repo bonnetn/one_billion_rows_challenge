@@ -16,7 +16,6 @@ pub fn run(path: &Path) -> Result<String> {
     let file = File::open(path)?;
     // SAFETY: mmap is only used for reading and we do not modify the file.
     let mmap = unsafe { Mmap::map(&file)? };
-    mmap.advise(memmap2::Advice::Sequential)?;
 
     let count = thread::available_parallelism()?.get();
     let chunk_size = mmap.len().div_ceil(count);
