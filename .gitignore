@@ -1,4 +1,4 @@
 /target
 profile.json.gz
-**/*.txt
-**/*.json
+measurements.out
+measurements.txt
