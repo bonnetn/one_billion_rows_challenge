@@ -1,16 +1,18 @@
-
 use std::{path::Path, time::Instant};
 
 use anyhow::Result;
 
-mod stats;
 mod generate;
+mod station_name;
+mod value;
+mod stats;
 mod v1;
 mod v2;
+mod v3;
 
 fn main() -> Result<()> {
     let start = Instant::now();
-    v2::run(Path::new("measurements.txt"))?;
+    v3::run(Path::new("measurements.txt"))?;
     let end = Instant::now();
     println!("Time taken: {:?}", end.duration_since(start));
     Ok(())
@@ -60,6 +62,14 @@ mod tests {
                         "Invalid output for v2: {}",
                         input_path.display()
                     );
+
+                    let result_v3 = v3::run(&input_path).unwrap();
+                    assert_eq!(
+                        result_v3,
+                        expected,
+                        "Invalid output for v3: {}",
+                        input_path.display()
+                    );
                 }
             )*
         };
@@ -88,16 +98,6 @@ mod tests {
         assert_eq!(result, expected);
     }
 
-    // #[test]
-    // fn test_measurements() {
-    //     let expected = get_expected_output().unwrap();
-    //     std::fs::write("mdr.txt", &expected).unwrap();
-
-    //     let result = v1::run(Path::new("measurements.txt")).unwrap();
-    //     std::fs::write("lol.txt", &result).unwrap();
-    //     assert_eq!(result, expected);
-    // }
-
     fn get_expected_output() -> Result<String> {
         #[derive(Debug, Deserialize)]
         struct Measurement {
@@ -116,7 +116,6 @@ mod tests {
 
         measurements.sort_by_key(|m| m.station.clone());
 
-
         let mut output = String::new();
         write!(output, "{{")?;
         let mut first = true;
@@ -128,7 +127,11 @@ mod tests {
             let min = (measurement.min * 10.0).round() / 10.0;
             let avg = (measurement.avg * 10.0).round() / 10.0;
             let max = (measurement.max * 10.0).round() / 10.0;
-            write!(output, "{}={:.1}/{:.1}/{:.1}", measurement.station, min, avg, max)?;
+            write!(
+                output,
+                "{}={:.1}/{:.1}/{:.1}",
+                measurement.station, min, avg, max
+            )?;
         }
         writeln!(output, "}}")?;
 

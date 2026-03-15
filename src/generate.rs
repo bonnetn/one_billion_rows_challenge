@@ -6,8 +6,8 @@ use std::io::{BufWriter, Write};
 use std::time::Instant;
 
 use anyhow::{Context as _, Result};
-use rand::seq::IndexedRandom;
 use rand::Rng;
+use rand::seq::IndexedRandom;
 use rand_distr::{Distribution, Normal};
 
 const CAPACITY: usize = 64 * 1024 * 1024;
@@ -438,13 +438,21 @@ pub fn generate_samples() -> Result<()> {
 
     let start = Instant::now();
     for i in 0..BILLION {
-        let station = stations.choose(&mut rng).context("Could not choose station")?;
+        let station = stations
+            .choose(&mut rng)
+            .context("Could not choose station")?;
         let measurement = station.measurement(&mut rng);
 
         writeln!(&mut writer, "{};{:.1}", station.name, measurement)?;
 
         if i % 10_000_000 == 0 {
-            println!("Wrote {}M measurements in {:?}", i / 1000_000, start.elapsed());
+            let percentage = i as f64 / BILLION as f64 * 100.0;
+            println!(
+                "Wrote {}M measurements ({:.0}%) in {:?}",
+                i / 1000_000,
+                percentage,
+                start.elapsed()
+            );
         }
     }
     let f = writer.into_inner()?;
@@ -452,8 +460,6 @@ pub fn generate_samples() -> Result<()> {
     println!("Finished in {:?}", start.elapsed());
 
     Ok(())
-
-
 }
 
 struct WeatherStation {
@@ -470,5 +476,4 @@ impl WeatherStation {
     fn measurement(&self, rng: &mut impl Rng) -> f64 {
         self.normal.sample(rng)
     }
-
 }

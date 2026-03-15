@@ -1,21 +1,21 @@
 #![allow(dead_code)]
 
 use anyhow::Result;
-use anyhow::{Context as _, bail};
+use anyhow::{Context as _};
 use memchr::memchr;
 use memmap2::Mmap;
 use rustc_hash::FxHashMap;
 use std::io::Write as _;
-use std::{collections::BTreeMap, fs::File, io::Read as _, path::Path};
+use std::{collections::BTreeMap, fs::File, path::Path};
 
-use crate::stats::{Value, average};
+use crate::stats::{DecimalValue, average};
 
 const BUFFER_SIZE: usize = 1024 * 1024 * 256;
 const STATS_CAPACITY: usize = 10000;
 
 pub fn run(path: &Path) -> Result<String> {
     let file = File::open(path)?;
-    let mmap = unsafe { Mmap::map(&file)?  };
+    let mmap = unsafe { Mmap::map(&file)? };
     let mut slice = &mmap[..];
 
     let mut line_processor = LineProcessor::new();
@@ -24,10 +24,13 @@ pub fn run(path: &Path) -> Result<String> {
         slice = line_processor.process(slice)?;
     }
 
-    let LineProcessor { stats, buffer, count } = line_processor;
+    let LineProcessor {
+        stats,
+        buffer,
+        count,
+    } = line_processor;
     assert!(buffer.len() == 0);
     println!("Processed {} lines", count);
-
 
     let stats = stats
         .into_iter()
@@ -43,7 +46,7 @@ pub fn run(path: &Path) -> Result<String> {
     for (name, stats) in stats {
         let min = stats.min;
         let max = stats.max;
-        let avg = average(stats.sum, stats.count)?;
+        let avg = average(stats.sum, stats.count);
         if !first {
             write!(output, ", ")?;
         }
@@ -51,9 +54,9 @@ pub fn run(path: &Path) -> Result<String> {
             output,
             "{}={}/{}/{}",
             name,
-            Value(min),
-            Value(avg),
-            Value(max)
+            DecimalValue(min),
+            DecimalValue(avg),
+            DecimalValue(max)
         )?;
         first = false;
     }

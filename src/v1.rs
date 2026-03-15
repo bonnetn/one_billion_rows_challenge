@@ -10,8 +10,7 @@ use std::{
 
 use anyhow::{Context as _, Result};
 
-use crate::stats::{Value, average};
-
+use crate::stats::{DecimalValue, average};
 
 #[derive(Debug, Default)]
 struct Stats {
@@ -21,7 +20,6 @@ struct Stats {
     count: usize,
 }
 
-
 pub fn run(path: &Path) -> Result<String> {
     let file = File::open(path)?;
     let reader = BufReader::with_capacity(1024 * 1024 * 1024, file);
@@ -30,7 +28,7 @@ pub fn run(path: &Path) -> Result<String> {
 
     let mut result: BTreeMap<String, Stats> = BTreeMap::new();
     for (i, line) in lines.enumerate() {
-        if i % 1_000_000 == 0  && i > 0 { 
+        if i % 1_000_000 == 0 && i > 0 {
             println!("Read {}M lines", i / 1_000_000);
         }
 
@@ -48,12 +46,15 @@ pub fn run(path: &Path) -> Result<String> {
             stats.sum += value as i32;
             stats.count += 1;
         } else {
-            result.insert(name.to_owned(), Stats {
-                min: value,
-                max: value,
-                sum: value as i32,
-                count: 1,
-            });
+            result.insert(
+                name.to_owned(),
+                Stats {
+                    min: value,
+                    max: value,
+                    sum: value as i32,
+                    count: 1,
+                },
+            );
         }
     }
 
@@ -65,7 +66,7 @@ pub fn run(path: &Path) -> Result<String> {
         let min = stats.min;
         let max = stats.max;
 
-        let avg = average(stats.sum, stats.count)?;
+        let avg = average(stats.sum, stats.count);
 
         if !first {
             write!(output, ", ")?;
@@ -75,9 +76,9 @@ pub fn run(path: &Path) -> Result<String> {
             output,
             "{}={}/{}/{}",
             name,
-            Value(min),
-            Value(avg),
-            Value(max),
+            DecimalValue(min),
+            DecimalValue(avg),
+            DecimalValue(max),
         )?;
         first = false;
     }
@@ -85,7 +86,6 @@ pub fn run(path: &Path) -> Result<String> {
 
     Ok(output)
 }
-
 
 fn parse_value(s: &str) -> Result<i16, anyhow::Error> {
     let v = s.replace('.', "");
