@@ -82,17 +82,13 @@ fn process(input_data: &[u8]) -> Result<StationStatsMap> {
 
     while !data.is_empty() {
         let Some((station_name, rest)) = station_name::parse(data) else {
-            bail!(
-                "Invalid line, no semicolon found: {:?}",
-                String::from_utf8_lossy(data)
-            );
+            let preview: String = String::from_utf8_lossy(&data[..data.len().min(80)]).into();
+            bail!("Invalid line, no semicolon found (preview): {:?}", preview);
         };
 
         let Some((value, rest)) = value::parse(rest) else {
-            bail!(
-                "Invalid line, no value found: {:?}",
-                String::from_utf8_lossy(rest)
-            );
+            let preview: String = String::from_utf8_lossy(&rest[..rest.len().min(80)]).into();
+            bail!("Invalid line, no value found (preview): {:?}", preview);
         };
 
         let rest = strip_newline(rest);

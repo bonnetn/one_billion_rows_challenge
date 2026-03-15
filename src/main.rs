@@ -1,3 +1,4 @@
+#![feature(portable_simd)]
 #![warn(
     clippy::pedantic,
     clippy::cargo_common_metadata,
