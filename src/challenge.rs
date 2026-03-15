@@ -1,7 +1,6 @@
 use anyhow::Result;
 use anyhow::{Context as _, bail};
 use std::io::Read as _;
-use std::sync::mpsc::TryRecvError;
 use std::thread;
 use std::{fs::File, path::Path};
 
@@ -19,7 +18,15 @@ pub fn run(path: &Path) -> Result<String> {
     let concurrency = thread::available_parallelism()?.get();
     let total_stats = thread::scope(|s| {
         let (work_tx, work_rx) = std::sync::mpmc::sync_channel::<WorkOrder>(concurrency);
-        let (buffer_tx, buffer_rx) = std::sync::mpsc::sync_channel::<Vec<u8>>(concurrency);
+        let (buffer_tx, buffer_rx) = std::sync::mpsc::sync_channel::<Vec<u8>>(concurrency*2);
+
+        // Pre-allocate the buffers.
+        // We want to be able to have 2 buffers per worker:
+        // - one actively being processed by the worker
+        // - one waiting to be processed by the worker
+        for _ in 0..(concurrency*2) {
+            buffer_tx.send(vec![0; CHUNK_SIZE])?;
+        }
 
         let feeder = std::thread::Builder::new()
             .name("feeder".to_owned())
@@ -30,13 +37,7 @@ pub fn run(path: &Path) -> Result<String> {
                 let mut last_buffer = vec![];
 
                 while idx < file_size {
-                    let mut buffer = match buffer_rx.try_recv() {
-                        Ok(buffer) => buffer,
-                        Err(TryRecvError::Empty) => {
-                            vec![0; CHUNK_SIZE]
-                        }
-                        e @ Err(TryRecvError::Disconnected) => e?,
-                    };
+                    let mut buffer = buffer_rx.recv()?;
 
                     let size = (file_size - idx).min(CHUNK_SIZE - last_buffer.len());
 
